@@ -1,12 +1,12 @@
 # Dockerfile
 # ① 后端依赖
-FROM oven/bun:1.1-alpine AS deps
+FROM oven/bun:1.3.14-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
 # ② 前端构建（SvelteKit → adapter-static 静态产物）
-FROM oven/bun:1.1-alpine AS web-builder
+FROM oven/bun:1.3.14-alpine AS web-builder
 WORKDIR /app/web
 COPY web/package.json web/bun.lock* ./
 RUN bun install --frozen-lockfile
@@ -14,7 +14,7 @@ COPY web/ .
 RUN bun run build
 
 # ③ 运行时镜像
-FROM oven/bun:1.1-alpine
+FROM oven/bun:1.3.14-alpine
 WORKDIR /app
 
 # sqlite-libs：bun:sqlite 运行时依赖；sqlite：CLI（scripts/backup.sh 用 .backup 安全备份）
