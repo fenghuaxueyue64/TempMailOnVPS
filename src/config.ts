@@ -8,6 +8,8 @@ export interface Config {
   jwtSecret: string;
   jwtExpiresIn: string;
   adminApiKey: string;
+  /** 管理后台入口路径（不含前导斜杠），随机英文+数字，避免被扫描器爆破 */
+  adminPath: string;
   allowedDomains: string[];
   desec: { token: string; autoMx: boolean; vpsIp: string };
   mailbox: { defaultTtlHours: number; maxTtlHours: number; tokenBytes: number };
@@ -48,6 +50,25 @@ export function loadConfig(): Config {
     throw new Error("config: ADMIN_API_KEY must be at least 16 chars (openssl rand -hex 32)");
   }
 
+  // 管理入口路径：必须是 4-32 位英文+数字（字母开头），防止被 /admin 之类的字典扫描命中
+  const adminPathRaw = (process.env.ADMIN_PATH ?? "").trim().replace(/^\/+|\/+$/g, "");
+  let adminPath: string;
+  if (adminPathRaw) {
+    if (!/^[A-Za-z][A-Za-z0-9]{3,31}$/.test(adminPathRaw)) {
+      throw new Error(
+        "config: ADMIN_PATH must be 4-32 chars, start with a letter, letters+digits only (e.g. panel8k3mzq7)"
+      );
+    }
+    adminPath = adminPathRaw;
+  } else {
+    // 未配置：随机生成（重启即变，仅应急用），并在启动时告警
+    adminPath = randomPathSegment();
+    console.warn(
+      `\n  ⚠  ADMIN_PATH 未配置，本次随机管理入口为：/${adminPath}\n` +
+        `     请在 .env 中设置 ADMIN_PATH=<随机英文+数字> 以固定入口，否则重启后路径会变化。\n`
+    );
+  }
+
   return {
     nodeEnv: process.env.NODE_ENV ?? "production",
     httpPort: envInt("HTTP_PORT", 3000),
@@ -62,6 +83,7 @@ export function loadConfig(): Config {
     jwtSecret,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
     adminApiKey,
+    adminPath,
     allowedDomains,
     desec: {
       token: process.env.DESEC_TOKEN ?? "",
@@ -91,6 +113,16 @@ export function loadConfig(): Config {
       maxPerCreate: envInt("INVITATION_MAX_PER_CREATE", 50),
     },
   };
+}
+
+/** 随机管理入口片段：字母开头 + 字母数字，10 位 */
+function randomPathSegment(): string {
+  const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  const s = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  // 确保字母开头（首字符取字母表子集）
+  return "abcdefghijkmnpqrstuvwxyz"[bytes[0] % 24] + s.slice(1);
 }
 
 /** 将 JWT_EXPIRES_IN（"7d"/"1h"/"30m"/"3600"）转为秒 */

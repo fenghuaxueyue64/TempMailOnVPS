@@ -485,12 +485,20 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
   if (existsSync("./web/build")) {
     app.get("/favicon.svg", serveStatic({ path: "./web/build/favicon.svg" }));
     app.use("/*", serveStatic({ root: "./web/build" }));
+
+    // 旧的 /admin 入口一律 404（避免被字典扫描命中）
+    app.get("/admin", (c) => c.json({ error: "not found" }, 404));
+    app.get("/admin/*", (c) => c.json({ error: "not found" }, 404));
+
     // SPA fallback：API 前缀返回 JSON 404，其余 GET 返回 index.html 交给前端路由
-    app.get("*", (c) => {
+    // 并把 {{ADMIN_PATH}} 占位符替换为真实管理入口（每个部署各不相同）
+    app.get("*", async (c) => {
       if (c.req.path.startsWith("/api/")) {
         return c.json({ error: "not found" }, 404);
       }
-      return new Response(Bun.file("./web/build/index.html"), {
+      const html = await Bun.file("./web/build/index.html").text();
+      const injected = html.replaceAll("{{ADMIN_PATH}}", cfg.adminPath);
+      return new Response(injected, {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     });

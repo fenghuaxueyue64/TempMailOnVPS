@@ -9,6 +9,10 @@
   let code = $state('');
   let loading = $state(false);
 
+  // 管理入口由后端注入，未配置则不展示入口
+  const adminPath: string =
+    (typeof window !== 'undefined' && (window as any).__ADMIN_PATH__) || '';
+
   onMount(() => {
     // 已登录直接跳主页
     if (loadUser()) goto('/');
@@ -86,9 +90,11 @@
     </p>
 
     <div class="text-center mt-4">
-      <a href="/admin" class="btn btn-text btn-sm">
-        <Icon name="admin_panel_settings" size={16} /> 管理后台
-      </a>
+      {#if adminPath}
+        <a href="/{adminPath}" class="btn btn-text btn-sm">
+          <Icon name="admin_panel_settings" size={16} /> 管理后台
+        </a>
+      {/if}
     </div>
   </div>
 </div>

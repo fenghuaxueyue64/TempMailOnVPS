@@ -82,6 +82,11 @@ JWT_SECRET=<上面生成的 128 位 hex>
 ADMIN_API_KEY=<上面生成的 64 位 hex>
 SMTP_NAME=mail.你的域名             # ← SMTP banner 主机名，建议 mail.<域名>
 
+# 管理后台入口（★必改，别用默认示例值）
+# 4-32 位，字母开头，仅字母+数字。生成：openssl rand -hex 5
+# 设置后后台地址为 https://你的域名/<ADMIN_PATH>，旧的 /admin 返回 404
+ADMIN_PATH=<随机英文+数字，如 k7m2x9q4pa>
+
 # deSEC 自动配 DNS（推荐，见 §3 方案 A）
 DESEC_TOKEN=<desec.io 的 API token>
 DESEC_AUTO_MX=true
@@ -187,7 +192,14 @@ smtp server listening on :25 (hostname=mail.example.com, accepts mail for @examp
 http api listening on :3000
 ```
 
-打开 `https://<你的域名>` → **跳转到 /login 输入邀请码** → 拿到 JWT 后跳回主页 → 在 `/admin` 后台「邀请码」标签页生成邀请码分发出去 → 用户用邀请码登录后创建邮箱 → 从 Gmail / QQ 邮箱发一封邮件过去，页面应在 1 秒内推送出来。
+打开 `https://<你的域名>` → **跳转到 /login 输入邀请码** → 拿到 JWT 后跳回主页。
+打开 **`https://<你的域名>/<ADMIN_PATH>`**（你在 `.env` 里设的那个随机路径）进入管理后台 → 「邀请码」标签页生成邀请码分发出去 → 用户用邀请码登录后创建邮箱 → 从 Gmail / QQ 邮箱发一封邮件过去，页面应在 1 秒内推送出来。
+
+> **管理入口说明**
+> - `/admin` 已废弃并固定返回 404（`http api` 层拦截），避免被字典扫描命中
+> - 入口路径由 `ADMIN_PATH` 决定，每个部署各不相同；后端在托管 `index.html` 时把 `{{ADMIN_PATH}}` 占位符替换为真实值
+> - 忘记路径时：`docker compose logs app | grep ADMIN_PATH`
+> - 这能挡住**自动化扫描与批量爆破**，但无法挡住专门盯着你的攻击者——真正的安全边界仍是 `ADMIN_API_KEY`。如需更强防护，可在 nginx 上加 HTTP Basic Auth 或 IP 白名单（见 §9）
 
 ---
 
@@ -292,6 +304,9 @@ chmod +x scripts/backup.sh
 | 502 Bad Gateway | app 容器未 healthy（`docker compose ps`）；上游改了端口 |
 | nginx 容器启动失败 `limit_req_zone directive is not allowed here` | `limit_req_zone` 被放进了 `server{}` 块——**必须在 http 上下文**（本仓库配置已修正） |
 | 证书签发失败 | 80 端口被占用（`docker compose down` 后再签），或 DNS 还没解析到本机 |
+| 访问 `/admin` 返回 404 | 正常行为——入口已改为 `ADMIN_PATH`，用 `docker compose logs app \| grep ADMIN_PATH` 查真实路径 |
+| 忘记管理入口路径 | `docker compose logs app \| grep ADMIN_PATH`；或在 `.env` 重设 `ADMIN_PATH` 后 `docker compose restart` |
+| 容器启动报 `ADMIN_PATH must be 4-32 chars` | 路径含非法字符：必须字母开头、仅字母+数字、4-32 位（如 `k7m2x9q4pa`，不要带斜杠） |
 | 附件下载 500 "invalid attachment path" | 老镜像旧代码；新代码已兼容中文/空格文件名，`docker compose pull` 更新镜像 |
 | 磁盘持续增长 | 附件文件现在会随邮件删除/过期清理一同删除；老数据可手工清空 `data/att` 下无主文件 |
 | 本地构建 `bun install --frozen-lockfile` 失败 | Bun 版本与 lockfile 不匹配：Dockerfile 须用 `oven/bun:1.3.14-alpine`（与生成锁文件的本地 Bun 版本一致） |
@@ -307,6 +322,7 @@ chmod +x scripts/backup.sh
 | 3000 | **仅 127.0.0.1** | compose 里已写 `127.0.0.1:3000:3000`，nginx 反代；**不要把 3000 直接映射到公网** |
 
 安全设计（代码已内置）：
+- **管理入口随机化**：后台地址由 `ADMIN_PATH` 决定（每个部署不同），`/admin` 固定返回 404——挡住自动化扫描与字典爆破。真正的边界仍是 `ADMIN_API_KEY`；如需更强防护见下方 nginx 加固
 - **绝不向客户端泄露密钥**：邮箱 token、ADMIN_API_KEY、deSEC token 全部仅服务端持有；接口响应不含 token 字段，用户标识只回脱敏的 `user_id_masked`（前 8 位 + …）
 - **鉴权全在服务端**：前端只持有 JWT 登录凭证，不持有任何"值钱"的东西；邮箱操作只传 id，地址由服务端从 JWT 解析用户后查库得到，**客户端无法操作他人邮箱**
 - **CSRF 防护**：所有写操作（POST/DELETE/PATCH）必须带 `X-DM-Req: 1` 自定义头 + 同源 Origin 校验；跨站伪造请求无法携带自定义头
@@ -315,7 +331,30 @@ chmod +x scripts/backup.sh
 - 附件路径守卫 + 落盘文件名字符集白名单，防路径穿越
 - SMTP 只对白名单域名收信，其余 `550 relaying denied`
 
----
+### 可选加固：给管理入口再加一层
+
+管理路径随机化只能挡住盲扫。若想进一步收紧，可在 nginx 上对管理路径加 Basic Auth 或 IP 白名单（把 `<ADMIN_PATH>` 换成你的实际值）：
+
+```nginx
+# 放在 HTTPS server 块内、location / 之前
+location /<ADMIN_PATH> {
+    # 方案 A：IP 白名单
+    # allow 1.2.3.4;      # 你的出口 IP
+    # deny all;
+
+    # 方案 B：HTTP Basic Auth（需 apt install apache2-utils 生成 htpasswd）
+    # auth_basic "Admin";
+    # auth_basic_user_file /etc/nginx/.htpasswd;
+
+    proxy_pass       http://app:3000;
+    proxy_set_header Host            $host;
+    proxy_set_header X-Real-IP       $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+改完 `docker exec tempmail-nginx nginx -s reload`。
 
 ## 10. 一键部署速通（老手版）
 
@@ -333,11 +372,14 @@ curl -sLo .env.example https://raw.githubusercontent.com/fenghuaxueyue64/TempMai
 sed -i "s/tmp\.io/$DOMAIN/g" nginx/conf.d/tempmail.conf
 cp .env.example .env
 
-# ② 配置密钥 + 域名
+# ② 配置密钥 + 域名 + 管理入口（ADMIN_PATH 自动生成随机串）
 sed -i "s/^ALLOWED_DOMAINS=.*/ALLOWED_DOMAINS=$DOMAIN/" .env
 sed -i "s/^SMTP_NAME=.*/SMTP_NAME=mail.$DOMAIN/" .env
 sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 64)/" .env
 sed -i "s/^ADMIN_API_KEY=.*/ADMIN_API_KEY=$(openssl rand -hex 32)/" .env
+ADMIN_PATH="p$(openssl rand -hex 5)"
+sed -i "s/^ADMIN_PATH=.*/ADMIN_PATH=$ADMIN_PATH/" .env
+echo "管理入口：https://$DOMAIN/$ADMIN_PATH"
 
 # ③ 签发 HTTPS 证书（需 80 端口空闲）
 docker run --rm -p 80:80 \

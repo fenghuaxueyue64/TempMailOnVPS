@@ -1,9 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { api, type Domain } from '$lib/api';
   import { adminStore, loadAdmin, saveAdmin, toast } from '$lib/stores';
   import Icon from '$lib/components/Icon.svelte';
   import Toasts from '$lib/components/Toasts.svelte';
+
+  // 管理入口由后端注入到 window.__ADMIN_PATH__（每个部署各不相同）
+  // 只有当前路径片段与之完全一致才渲染管理面板，其余一律 404
+  const configuredPath: string =
+    (typeof window !== 'undefined' && (window as any).__ADMIN_PATH__) || '';
+  const slug = $derived($page.params.admin ?? '');
+  const allowed = $derived(configuredPath !== '' && slug.toLowerCase() === configuredPath.toLowerCase());
 
   let jwt = $state<string | null>(null);
   // 登录输入：必须与 jwt 分离，否则一输入就使 jwt truthy 导致登录页消失
@@ -258,6 +266,18 @@
   }
 </script>
 
+{#if !allowed}
+  <!-- 路径不匹配配置的管理入口：当作不存在 -->
+  <div class="min-h-screen supports-[height:100dvh]:min-h-dvh flex items-center justify-center p-6 bg-surface">
+    <div class="text-center">
+      <Icon name="search_off" size={64} class="text-outline mx-auto mb-4 opacity-40" />
+      <p class="text-base text-surface-on-variant">页面不存在</p>
+      <a href="/" class="btn btn-text btn-sm mt-4">
+        <Icon name="home" size={16} /> 返回首页
+      </a>
+    </div>
+  </div>
+{:else}
 <div class="h-screen supports-[height:100dvh]:h-dvh flex flex-col bg-surface pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
   <!-- 顶部应用栏 -->
   <header class="h-16 px-4 sm:px-6 flex items-center justify-between border-b border-surface-variant bg-surface-container shrink-0">
@@ -636,3 +656,4 @@
 
   <Toasts />
 </div>
+{/if}

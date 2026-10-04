@@ -9,6 +9,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
   <title>TempMail · 临时邮箱</title>
+  <!-- 管理入口路径：由后端在托管 index.html 时把 {{ADMIN_PATH}} 替换为 .env 中配置的 ADMIN_PATH -->
+  <script>window.__ADMIN_PATH__="{{ADMIN_PATH}}";</script>
   %sveltekit.head%
 </head>
 <body data-sveltekit-preload-data="hover">

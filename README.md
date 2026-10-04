@@ -32,10 +32,11 @@ curl -sLo .env.example https://raw.githubusercontent.com/fenghuaxueyue64/TempMai
 sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
 cp .env.example .env
 
-# ② 编辑 .env（至少改这三项）
+# ② 编辑 .env（至少改这四项）
 #    ALLOWED_DOMAINS=你的域名
 #    JWT_SECRET=$(openssl rand -hex 64)
 #    ADMIN_API_KEY=$(openssl rand -hex 32)
+#    ADMIN_PATH=$(openssl rand -hex 5)   ← 管理入口随机路径，别用 admin
 
 # ③ 配置 DNS 解析（在域名注册商/DNS 托管商处添加）
 #    类型    名称       值
@@ -93,7 +94,9 @@ cd web && bun install && bun run dev   # Vite :5173，自动 proxy /api /ws /sse
 |------|------|
 | `/login` | 用户登录页（输入邀请码换 JWT） |
 | `/` | **用户端**：邮箱列表 → 收件箱 → 邮件详情 / OTP 提取 / Magic Link / 附件下载 |
-| `/admin` | **管理端**：域名管理 / 邀请码 CRUD / 过期清理 / deSEC DNS 查看-同步-校验 |
+| `/<ADMIN_PATH>` | **管理端**：域名管理 / 邀请码 CRUD / 过期清理 / deSEC DNS 查看-同步-校验 |
+
+> 管理入口路径由 `.env` 的 `ADMIN_PATH` 决定（4-32 位，字母开头，仅字母+数字），**每个部署各不相同**；旧的 `/admin` 固定返回 404，避免被字典扫描爆破。忘记路径：`docker compose logs app | grep ADMIN_PATH`。
 
 设计：Material 3（紫主色 #6750A4、elevation 阴影、ripple 涟漪、Roboto 字体、Material Symbols Rounded、按钮 5 变体）。双栏布局（md=768 断点），移动端单栏 + dvh 适配。
 
