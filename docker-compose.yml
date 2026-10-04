@@ -4,9 +4,12 @@ name: tempmail
 services:
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # 预构建镜像（推荐，GitHub Actions 自动构建推送）
+    image: ghcr.io/fenghuaxueyue64/tempmail:latest
+    # 如需本地构建（开发/修改源码），取消注释下面的 build 段并注释掉 image
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: tempmail-app
     restart: unless-stopped
     ports:

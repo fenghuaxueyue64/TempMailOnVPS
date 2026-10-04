@@ -26,18 +26,30 @@
 
 ---
 
-## 1. 上传代码到服务器
+## 1. 准备部署目录
+
+两种方式，选一种即可：
+
+### 方式 A：拉取预构建镜像（推荐，最快）
+
+只需要 `docker-compose.yml` + nginx 配置 + `.env`，不需要源码：
 
 ```bash
-# 方式 A：git（推荐）
-git clone <你的仓库> /opt/tempmail && cd /opt/tempmail/tempmail-bun
+mkdir -p /opt/tempmail && cd /opt/tempmail
 
-# 方式 B：本地打包上传（Windows 用 scp / rsync）
-# 注意：已配置 .dockerignore，node_modules 和 data 不会被打进镜像
-scp -r ./tempmail-bun root@<VPS_IP>:/opt/tempmail
+# 下载必要文件
+curl -sLO https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/docker-compose.yml
+mkdir -p nginx/conf.d
+curl -sLo nginx/conf.d/tempmail.conf https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/nginx/conf.d/tempmail.conf
+curl -sLo .env.example https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/.env.example
 ```
 
-服务器上只需要 `tempmail-bun/` 这一个目录。
+### 方式 B：克隆完整仓库（需要自行构建镜像）
+
+```bash
+git clone https://github.com/fenghuaxueyue64/TempMailOnVPS /opt/tempmail && cd /opt/tempmail
+# 编辑 docker-compose.yml：注释掉 image 行，取消注释 build 段
+```
 
 ---
 
@@ -149,9 +161,17 @@ sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
 
 ## 5. 启动
 
+> **首次部署前**：GitHub Actions 推送到 ghcr.io 的镜像默认是私有的。你需要到 GitHub 仓库 → Packages → tempmail → Package settings → Change visibility → **Public**，否则 `docker compose pull` 需要登录 ghcr.io。
+
 ```bash
 cd /opt/tempmail
-docker compose up -d --build     # 首次会构建前端（bun install + vite build），约 2-5 分钟
+
+# 方式 A（推荐）：拉取预构建镜像
+docker compose up -d           # 首次自动拉取 ghcr.io/fenghuaxueyue64/tempmail:latest
+
+# 方式 B：本地构建（需要源码 + docker-compose.yml 中启用 build 段）
+# docker compose up -d --build  # 首次会构建前端（bun install + vite build），约 2-5 分钟
+
 docker compose ps                # 两个容器都应是 healthy/running
 docker compose logs -f app       # 看启动日志
 ```
@@ -229,7 +249,7 @@ ufw reload
 | 看日志 | `docker compose logs -f app` |
 | 重启 | `docker compose restart` |
 | 停站 | `docker compose down`（数据保留在 `./data`） |
-| 升级 | `git pull && docker compose up -d --build` |
+| 升级 | `docker compose pull && docker compose up -d` 或 `git pull && docker compose up -d --build` |
 | 生成邀请码 | `/admin` 后台「邀请码」标签页 → 设数量/有效期/备注 → 生成 → 复制分发给用户 |
 | 撤销邀请码 | `/admin` 邀请码列表 → 未使用状态的码有撤销按钮 |
 | 手动清理过期邮箱 | `/admin` 域名标签页「清理过期邮箱」按钮（每小时自动清理一次，附件文件一并删除） |
