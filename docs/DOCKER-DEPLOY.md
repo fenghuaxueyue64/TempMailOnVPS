@@ -3,6 +3,7 @@
 > 适用：`tempmail-bun/`（Bun + Hono + SQLite + 内置 SMTP，SvelteKit 前端）。
 > 目标：一台 VPS + 一个域名，跑起「收信 + Web UI + 实时推送」的自托管临时邮箱。
 > 全程只需要服务器上有 **Docker + Docker Compose**，不需要装 Bun/Node/Nginx(宿主机)。
+> 预构建镜像：`ghcr.io/fenghuaxueyue64/tempmail:latest`（GitHub Actions 自动构建，push main 即更新）。
 
 ---
 
@@ -35,20 +36,30 @@
 只需要 `docker-compose.yml` + nginx 配置 + `.env`，不需要源码：
 
 ```bash
-mkdir -p /opt/tempmail && cd /opt/tempmail
+mkdir -p /opt/tempmail/nginx/conf.d /opt/tempmail/nginx/certbot-www && cd /opt/tempmail
 
 # 下载必要文件
 curl -sLO https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/docker-compose.yml
-mkdir -p nginx/conf.d
 curl -sLo nginx/conf.d/tempmail.conf https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/nginx/conf.d/tempmail.conf
 curl -sLo .env.example https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/.env.example
+
+# 创建 .env
+cp .env.example .env
+
+# 替换 nginx 配置中的占位域名为你的域名（共 5 处）
+sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
 ```
+
+> ⚠️ ghcr.io 镜像默认是**私有**的。你需要到 GitHub → [Packages](https://github.com/fenghuaxueyue64?tab=packages) → tempmail → Package settings → **Change visibility → Public**，否则 `docker compose pull` 需要先 `docker login ghcr.io`。
 
 ### 方式 B：克隆完整仓库（需要自行构建镜像）
 
 ```bash
 git clone https://github.com/fenghuaxueyue64/TempMailOnVPS /opt/tempmail && cd /opt/tempmail
+
 # 编辑 docker-compose.yml：注释掉 image 行，取消注释 build 段
+# 替换 nginx 配置中的占位域名
+sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
 ```
 
 ---
@@ -57,7 +68,6 @@ git clone https://github.com/fenghuaxueyue64/TempMailOnVPS /opt/tempmail && cd /
 
 ```bash
 cd /opt/tempmail
-cp .env.example .env
 
 # 生成两个密钥（必须！否则启动直接报错退出）
 openssl rand -hex 64   # → JWT_SECRET（≥32 字符）
@@ -67,10 +77,10 @@ openssl rand -hex 32   # → ADMIN_API_KEY（≥16 字符）
 编辑 `.env`，**最小必改项**：
 
 ```dotenv
-ALLOWED_DOMAINS=tmp.io            # ← 换成你的域名（多个用逗号分隔）
+ALLOWED_DOMAINS=你的域名            # ← 换成你的域名（多个用逗号分隔）
 JWT_SECRET=<上面生成的 128 位 hex>
 ADMIN_API_KEY=<上面生成的 64 位 hex>
-SMTP_NAME=mail.tmp.io             # ← SMTP banner 主机名，建议 mail.<域名>
+SMTP_NAME=mail.你的域名             # ← SMTP banner 主机名，建议 mail.<域名>
 
 # deSEC 自动配 DNS（推荐，见 §3 方案 A）
 DESEC_TOKEN=<desec.io 的 API token>
@@ -86,11 +96,11 @@ VPS_IP=<你的 VPS 公网 IP>
 
 ## 3. DNS 解析（二选一）
 
-设主域名为 `tmp.io`，VPS IP 为 `1.2.3.4`。你需要两条记录：**`mail.tmp.io` 的 A 记录**（MX 指向它）+ **`tmp.io` 的 MX 记录**。
+设主域名为 `example.com`，VPS IP 为 `1.2.3.4`。你需要两条记录：**`mail.example.com` 的 A 记录**（MX 指向它）+ **`example.com` 的 MX 记录**。
 
 ### 方案 A：域名托管到 deSEC（推荐，全自动）
 
-1. 注册 [deSEC.io](https://desec.io/)，添加域名 `tmp.io`
+1. 注册 [deSEC.io](https://desec.io/)，添加域名 `example.com`
 2. 在域名注册商处把 **NS** 改为 deSEC 的四个 NS（`ns1.desec.io` `ns2.desec.org` `ns1.desec.org` `ns2.desec.io`，以控制台显示为准）
 3. 创建 API Token，填入 `.env` 的 `DESEC_TOKEN`
 4. 本服务会在**添加域名时**自动调用 deSEC API 写入：
@@ -98,7 +108,7 @@ VPS_IP=<你的 VPS 公网 IP>
 | 类型 | 名称 | 值 |
 |---|---|---|
 | A | `mail` | `1.2.3.4` |
-| MX | `@` | `10 mail.tmp.io.` |
+| MX | `@` | `10 mail.example.com.` |
 | TXT | `@` | `"v=spf1 ip4:1.2.3.4 ~all"` |
 
 启动后可在 `/admin` 管理端「同步 MX」「校验 MX」手动触发与验证。
@@ -108,21 +118,21 @@ VPS_IP=<你的 VPS 公网 IP>
 | 类型 | 名称 | 值 | TTL |
 |---|---|---|---|
 | A | `mail` | `1.2.3.4` | 300 |
-| MX | `@` | `10 mail.tmp.io.` | 300 |
+| MX | `@` | `10 mail.example.com.` | 300 |
 | TXT | `@` | `"v=spf1 ip4:1.2.3.4 ~all"` | 300 |
-| TXT（可选） | `_dmarc` | `"v=DMARC1; p=none; rua=mailto:you@tmp.io"` | 300 |
+| TXT（可选） | `_dmarc` | `"v=DMARC1; p=none; rua=mailto:you@example.com"` | 300 |
 
 **Cloudflare 注意**：
-- apex 域名（`tmp.io`）不能 CNAME，只能 A / ALIAS；MX 直接填在 apex 上没问题
+- apex 域名（`example.com`）不能 CNAME，只能 A / ALIAS；MX 直接填在 apex 上没问题
 - **必须关掉橙色云朵（仅限 DNS，不走 CF 代理）**——代理只支持 HTTP 端口，会**吃掉 25 端口的 SMTP 流量**
 - 关闭 CF 的 "Email Routing" 对该域名的接管，否则会抢走 MX
 
 验证（在任意机器上）：
 
 ```bash
-dig +short MX tmp.io        # 期望：10 mail.tmp.io.
-dig +short A  mail.tmp.io   # 期望：1.2.3.4
-dig +short TXT tmp.io       # 期望：v=spf1 ip4:1.2.3.4 ~all
+dig +short MX example.com        # 期望：10 mail.example.com.
+dig +short A  mail.example.com   # 期望：1.2.3.4
+dig +short TXT example.com       # 期望：v=spf1 ip4:1.2.3.4 ~all
 ```
 
 ---
@@ -138,16 +148,11 @@ mkdir -p /opt/tempmail/nginx/certbot-www
 docker run --rm -p 80:80 \
   -v /etc/letsencrypt:/etc/letsencrypt \
   certbot/certbot certonly --standalone \
-  -d tmp.io -d mail.tmp.io \
+  -d example.com -d mail.example.com \
   --agree-tos -m you@example.com
 ```
 
-改 nginx 配置里的域名（**5 处**）：
-
-```bash
-cd /opt/tempmail
-sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
-```
+> §1 方式 A 已用 `sed` 替换了 nginx 配置中的占位域名。如果是手动部署，需确认 `nginx/conf.d/tempmail.conf` 中的 5 处 `tmp.io` 已替换为你的域名。
 
 **自动续期**（加进 `crontab -e`）：
 
@@ -160,8 +165,6 @@ sed -i 's/tmp\.io/你的域名/g' nginx/conf.d/tempmail.conf
 ---
 
 ## 5. 启动
-
-> **首次部署前**：GitHub Actions 推送到 ghcr.io 的镜像默认是私有的。你需要到 GitHub 仓库 → Packages → tempmail → Package settings → Change visibility → **Public**，否则 `docker compose pull` 需要登录 ghcr.io。
 
 ```bash
 cd /opt/tempmail
@@ -179,8 +182,8 @@ docker compose logs -f app       # 看启动日志
 期望日志：
 
 ```
-starting tempmail for domains [tmp.io] on :3000
-smtp server listening on :25 (hostname=mail.tmp.io, accepts mail for @tmp.io)
+starting tempmail for domains [example.com] on :3000
+smtp server listening on :25 (hostname=mail.example.com, accepts mail for @example.com)
 http api listening on :3000
 ```
 
@@ -197,7 +200,7 @@ http api listening on :3000
 nc -vz <VPS_IP> 25                       # 期望 succeeded
 
 # 完整对话测试
-swaks --server mail.tmp.io --port 25 \
+swaks --server mail.example.com --port 25 \
       --from test@gmail.com \
       --to <你在网页上创建的地址> \
       --header "Subject: hello" --body "test body"
@@ -249,7 +252,8 @@ ufw reload
 | 看日志 | `docker compose logs -f app` |
 | 重启 | `docker compose restart` |
 | 停站 | `docker compose down`（数据保留在 `./data`） |
-| 升级 | `docker compose pull && docker compose up -d` 或 `git pull && docker compose up -d --build` |
+| 升级（镜像模式） | `docker compose pull && docker compose up -d` |
+| 升级（源码模式） | `git pull && docker compose up -d --build` |
 | 生成邀请码 | `/admin` 后台「邀请码」标签页 → 设数量/有效期/备注 → 生成 → 复制分发给用户 |
 | 撤销邀请码 | `/admin` 邀请码列表 → 未使用状态的码有撤销按钮 |
 | 手动清理过期邮箱 | `/admin` 域名标签页「清理过期邮箱」按钮（每小时自动清理一次，附件文件一并删除） |
@@ -274,6 +278,8 @@ chmod +x scripts/backup.sh
 
 | 现象 | 原因 / 排查 |
 |---|---|
+| `docker compose pull` 报 401 / denied | ghcr.io 镜像未设为 Public：GitHub → Packages → tempmail → Package settings → Change visibility → Public |
+| `docker compose pull` 报 not found | 首次推送后镜像可能需要几分钟同步；确认 CI 已成功构建（Actions 标签页） |
 | 容器启动即退出，日志 `config: ... is required` | `.env` 没建或 `ALLOWED_DOMAINS`/`JWT_SECRET`/`ADMIN_API_KEY` 没填 |
 | 用户登录页提示「code not recognized」 | 邀请码已用 / 已过期 / 已撤销，去 `/admin` 邀请码标签页生成新的 |
 | 用户登录后 401「invalid or expired token」 | JWT 已过期（7 天），重新输入邀请码（同一码不能复用，需新码） |
@@ -286,8 +292,9 @@ chmod +x scripts/backup.sh
 | 502 Bad Gateway | app 容器未 healthy（`docker compose ps`）；上游改了端口 |
 | nginx 容器启动失败 `limit_req_zone directive is not allowed here` | `limit_req_zone` 被放进了 `server{}` 块——**必须在 http 上下文**（本仓库配置已修正） |
 | 证书签发失败 | 80 端口被占用（`docker compose down` 后再签），或 DNS 还没解析到本机 |
-| 附件下载 500 "invalid attachment path" | 老镜像旧代码；新代码已兼容中文/空格文件名 |
+| 附件下载 500 "invalid attachment path" | 老镜像旧代码；新代码已兼容中文/空格文件名，`docker compose pull` 更新镜像 |
 | 磁盘持续增长 | 附件文件现在会随邮件删除/过期清理一同删除；老数据可手工清空 `data/att` 下无主文件 |
+| 本地构建 `bun install --frozen-lockfile` 失败 | Bun 版本与 lockfile 不匹配：Dockerfile 须用 `oven/bun:1.3.14-alpine`（与生成锁文件的本地 Bun 版本一致） |
 
 ---
 
@@ -307,3 +314,44 @@ chmod +x scripts/backup.sh
 - 附件下载强制 `Content-Disposition: attachment`，HTML 邮件渲染在 `sandbox=""` iframe 内（禁脚本/表单/弹窗）
 - 附件路径守卫 + 落盘文件名字符集白名单，防路径穿越
 - SMTP 只对白名单域名收信，其余 `550 relaying denied`
+
+---
+
+## 10. 一键部署速通（老手版）
+
+以下命令从零到跑起，适合已经熟悉流程的用户。**首次部署**，将 `YOUR_DOMAIN` 和 `VPS_IP` 替换为实际值：
+
+```bash
+export DOMAIN="YOUR_DOMAIN"
+export IP="VPS_IP"
+
+# ① 准备目录 + 下载文件
+mkdir -p /opt/tempmail/nginx/{conf.d,certbot-www} && cd /opt/tempmail
+curl -sLO https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/docker-compose.yml
+curl -sLo nginx/conf.d/tempmail.conf https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/nginx/conf.d/tempmail.conf
+curl -sLo .env.example https://raw.githubusercontent.com/fenghuaxueyue64/TempMailOnVPS/main/.env.example
+sed -i "s/tmp\.io/$DOMAIN/g" nginx/conf.d/tempmail.conf
+cp .env.example .env
+
+# ② 配置密钥 + 域名
+sed -i "s/^ALLOWED_DOMAINS=.*/ALLOWED_DOMAINS=$DOMAIN/" .env
+sed -i "s/^SMTP_NAME=.*/SMTP_NAME=mail.$DOMAIN/" .env
+sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$(openssl rand -hex 64)/" .env
+sed -i "s/^ADMIN_API_KEY=.*/ADMIN_API_KEY=$(openssl rand -hex 32)/" .env
+
+# ③ 签发 HTTPS 证书（需 80 端口空闲）
+docker run --rm -p 80:80 \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  certbot/certbot certonly --standalone \
+  -d "$DOMAIN" -d "mail.$DOMAIN" \
+  --agree-tos -m "admin@$DOMAIN"
+
+# ④ 启动
+docker compose up -d
+
+# ⑤ 验证
+sleep 5 && docker compose ps
+curl -sf "https://$DOMAIN/api/health"
+```
+
+DNS 记录仍需手动添加（见 §3），`docker compose pull` 需要镜像已设为 Public（见 §1 方式 A 提示）。续期 crontab 见 §4。
