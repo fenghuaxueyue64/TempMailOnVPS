@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Material 3 全局基础 */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-surface text-surface-on font-sans antialiased;
+    color: #1D1B20;
+  }
+  ::selection {
+    @apply bg-primary-container;
+  }
+}
+
+/* Material Symbols 图标基线 */
+.material-symbols-rounded {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+  user-select: none;
+}
+.material-symbols-rounded.fill {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+@layer components {
+  /* M3 Ripple 涟漪效果 */
+  .ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  .ripple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    border-radius: inherit;
+    transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1);
+    pointer-events: none;
+  }
+  .ripple:active::after {
+    opacity: 0.12;
+  }
+
+  /* M3 卡片 */
+  .card {
+    @apply bg-surface-container rounded-m3 shadow-m1 transition-all duration-200 ease-m3;
+  }
+  .card-elevated {
+    @apply bg-surface-container rounded-m3 shadow-m2 transition-all duration-200 ease-m3;
+  }
+
+  /* M3 按钮变体 */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-5 h-10 rounded-m3sm text-sm font-medium tracking-wide transition-all duration-200 ease-m3 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none select-none ripple whitespace-nowrap;
+  }
+  .btn-sm {
+    @apply px-3 h-8 text-xs rounded-m3sm;
+  }
+  .btn-filled {
+    @apply bg-primary text-primary-on shadow-m1 hover:shadow-m2 hover:bg-primary-hover;
+  }
+  .btn-tonal {
+    @apply bg-primary-container text-primary-onContainer hover:brightness-95;
+  }
+  .btn-outlined {
+    @apply border border-outline text-primary hover:bg-primary-container/30;
+  }
+  .btn-text {
+    @apply text-primary hover:bg-primary-container/30 px-3;
+  }
+  .btn-danger {
+    @apply bg-error text-error-on hover:brightness-95;
+  }
+
+  /* M3 输入框 */
+  .input {
+    @apply w-full h-12 px-4 rounded-m3sm border border-outline bg-surface-container-low text-base focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary-container transition-all duration-200;
+  }
+
+  /* M3 Chip */
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 h-7 rounded-full text-xs font-medium;
+  }
+  .chip-primary {
+    @apply bg-primary-container text-primary-onContainer;
+  }
+  .chip-error {
+    @apply bg-error-container text-error-onContainer;
+  }
+  .chip-success {
+    @apply bg-success-container text-success;
+  }
+  .chip-neutral {
+    @apply bg-surface-container-high text-surface-on-variant;
+  }
+
+  /* 头像（发件人首字母） */
+  .avatar {
+    @apply w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0;
+  }
+
+  /* 邮件列表项 */
+  .mail-item {
+    @apply relative flex items-start gap-3 p-3 rounded-m3sm cursor-pointer transition-all duration-200 ease-m3 hover:bg-surface-container-high;
+  }
+  .mail-item.active {
+    @apply bg-primary-container/40;
+  }
+  .mail-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 24px;
+    @apply bg-primary rounded-r-full;
+  }
+
+  /* Skeleton 加载态 */
+  .skeleton {
+    @apply bg-surface-container-high animate-pulse rounded-m3sm;
+  }
+
+  /* 滚动条美化 */
+  .scroll-area {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(103, 80, 164, 0.3) transparent;
+  }
+}
+
+/* 全局滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-outline/30 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-outline/50; }

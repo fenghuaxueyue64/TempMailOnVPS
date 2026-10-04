@@ -1,0 +1,22 @@
+# .dockerignore —— 避免本地 node_modules / 数据被送进构建上下文
+node_modules/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.vercel/
+
+data/
+.env
+.env.*
+*.log
+*.sqlite
+*.db
+
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+**/*.md
+!README.md

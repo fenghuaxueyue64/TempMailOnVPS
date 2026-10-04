@@ -1,0 +1,52 @@
+# docker-compose.yml
+name: tempmail
+
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tempmail-app
+    restart: unless-stopped
+    ports:
+      - "25:25"                      # SMTP 入站，必须对公网开放
+      - "127.0.0.1:3000:3000"        # HTTP API 仅本地，Nginx 代理
+    volumes:
+      - ./data:/app/data             # 数据持久化（DB + 附件 + 备份）
+    env_file:
+      - .env
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: tempmail-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certbot-www:/var/www/certbot:ro  # certbot webroot 共享目录（宿主机先 mkdir）
+      - /etc/letsencrypt:/etc/letsencrypt:ro     # 直接挂载宿主机 certbot 证书
+    networks:
+      - internal
+    depends_on:
+      app:
+        condition: service_healthy
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,22 @@
+{
+  "name": "tempmail",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/main.ts",
+    "start": "bun run src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "mailparser": "^3.7.0",
+    "smtp-server": "^3.13.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "@types/mailparser": "^3.4.0",
+    "@types/smtp-server": "^3.5.0",
+    "typescript": "^5.5.0"
+  }
+}
