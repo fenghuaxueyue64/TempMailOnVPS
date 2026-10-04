@@ -37,13 +37,24 @@ cp .env.example .env
 #    JWT_SECRET=$(openssl rand -hex 64)
 #    ADMIN_API_KEY=$(openssl rand -hex 32)
 
-# ③ 签 HTTPS 证书（80 端口需空闲）
+# ③ 配置 DNS 解析（在域名注册商/DNS 托管商处添加）
+#    类型    名称       值
+#    A      mail      你的VPS公网IP
+#    MX     @         10 mail.你的域名.
+#    TXT    @         "v=spf1 ip4:你的VPS公网IP ~all"
+#
+#    验证：dig +short MX 你的域名  →  10 mail.你的域名.
+#    Cloudflare 用户：必须关掉橙色云朵（仅 DNS），否则会吃掉 25 端口 SMTP 流量
+#
+#    可选（推荐）：deSEC.io 托管域名可全自动配置，.env 中设 DESEC_TOKEN + DESEC_AUTO_MX=true
+
+# ④ 签 HTTPS 证书（80 端口需空闲）
 docker run --rm -p 80:80 \
   -v /etc/letsencrypt:/etc/letsencrypt \
   certbot/certbot certonly --standalone \
   -d 你的域名 -d mail.你的域名 --agree-tos -m you@example.com
 
-# ④ 启动
+# ⑤ 启动
 docker compose up -d
 ```
 
