@@ -6,6 +6,10 @@
   import Toasts from '$lib/components/Toasts.svelte';
 
   let jwt = $state<string | null>(null);
+  // 登录输入：必须与 jwt 分离，否则一输入就使 jwt truthy 导致登录页消失
+  let apiKeyInput = $state('');
+  let loginBusy = $state(false);
+  let loginError = $state<string | null>(null);
   let cleanupResult = $state<string | null>(null);
   let loadingDomains = $state(false);
   let selectedDomain = $state<string | null>(null);
@@ -60,9 +64,32 @@
     }
   }
 
+  // ADMIN_API_KEY → JWT（不能把 key 直接当 token 用）
+  async function login() {
+    const key = apiKeyInput.trim();
+    if (!key) return;
+    loginBusy = true;
+    loginError = null;
+    try {
+      const r = await api.adminLogin(key);
+      if (!r?.token) throw new Error('服务端未返回 token');
+      saveAdmin(r.token);
+      jwt = r.token;
+      apiKeyInput = '';
+      adminStore.update((s) => ({ ...s, jwt: r.token }));
+      await loadDomains();
+    } catch (e) {
+      loginError = e instanceof Error ? e.message : '登录失败';
+    } finally {
+      loginBusy = false;
+    }
+  }
+
   function logout() {
     saveAdmin(null);
     jwt = null;
+    apiKeyInput = '';
+    loginError = null;
     adminStore.set({ jwt: null, domains: [], invitations: [] });
     selectedDomain = null;
   }
@@ -266,7 +293,7 @@
           <h2 class="text-xl font-semibold text-surface-on">管理后台登录</h2>
           <p class="text-sm text-surface-on-variant mt-1">输入 ADMIN_API_KEY 继续</p>
         </div>
-        <form class="card-elevated p-6 space-y-4" onsubmit={(e) => { e.preventDefault(); void addDomain(); }}>
+        <form class="card-elevated p-6 space-y-4" onsubmit={(e) => { e.preventDefault(); void login(); }}>
           <div class="relative">
             <span class="absolute left-4 top-1/2 -translate-y-1/2 text-outline">
               <Icon name="key" size={20} />
@@ -275,12 +302,23 @@
               type="password"
               class="input pl-12"
               placeholder="ADMIN_API_KEY"
-              bind:value={jwt}
-              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (jwt) { saveAdmin(jwt); void loadDomains(); } } }}
+              bind:value={apiKeyInput}
+              disabled={loginBusy}
+              autocomplete="off"
+              onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void login(); } }}
             >
           </div>
-          <button type="submit" class="btn btn-filled w-full" disabled={!jwt}>
-            <Icon name="login" size={18} /> 登录
+          {#if loginError}
+            <p class="text-sm text-error flex items-center gap-1.5">
+              <Icon name="error" size={16} /> {esc(loginError)}
+            </p>
+          {/if}
+          <button type="submit" class="btn btn-filled w-full" disabled={loginBusy || !apiKeyInput.trim()}>
+            {#if loginBusy}
+              <Icon name="progress_activity" size={18} class="animate-spin" /> 登录中…
+            {:else}
+              <Icon name="login" size={18} /> 登录
+            {/if}
           </button>
         </form>
       </div>
