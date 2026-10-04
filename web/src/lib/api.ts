@@ -40,15 +40,20 @@ export interface Domain {
   domain: string;
   is_active: boolean | number;
   mx_synced: boolean | number;
+  from_env?: boolean;      // 是否来自环境变量 ALLOWED_DOMAINS（自动同步，无需手动添加）
   created_at: string;
 }
 
 export interface Invitation {
   code: string;
   note: string | null;
-  used_at: string | null;
+  used_at: string | null;      // 首次使用时间
+  last_used_at?: string | null;
+  use_count?: number;
   expires_at: string;
   created_at: string;
+  expired?: boolean;
+  status?: 'unused' | 'used' | 'expired';
 }
 
 class ApiError extends Error {

@@ -62,13 +62,16 @@ CREATE TABLE IF NOT EXISTS users (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 邀请码：一次性使用，换 JWT。code 即用户标识（mailboxes.user_id 存 code）
+-- 邀请码：换 JWT。code 即用户标识（mailboxes.user_id 存 code）
+-- ★ 可重复使用：有效期内同一码可反复登录（否则 JWT 过期/清缓存后用户永久失联）
 CREATE TABLE IF NOT EXISTS invitations (
-  code       TEXT    PRIMARY KEY,        -- 32 位 hex
-  note       TEXT,                        -- admin 备注（如"给张三"）
-  used_at     DATETIME,                    -- NULL = 未使用
-  expires_at  DATETIME NOT NULL,           -- 邀请码自身过期时间
-  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  code         TEXT    PRIMARY KEY,        -- 32 位 hex
+  note         TEXT,                        -- admin 备注（如"给张三"）
+  used_at      DATETIME,                    -- 首次使用时间（NULL = 从未使用）
+  last_used_at DATETIME,                    -- 最近一次登录时间
+  use_count    INTEGER DEFAULT 0,           -- 登录次数
+  expires_at   DATETIME NOT NULL,           -- 邀请码自身过期时间
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_inv_used   ON invitations(used_at);
 CREATE INDEX IF NOT EXISTS idx_inv_exp    ON invitations(expires_at);

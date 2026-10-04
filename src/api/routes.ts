@@ -116,11 +116,20 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
       db, "SELECT code, used_at, expires_at FROM invitations WHERE code = ?", code,
     );
     if (!inv) return c.json({ error: "code not recognized" }, 401);
-    if (inv.used_at) return c.json({ error: "code already used" }, 401);
     const nowSec = Math.floor(Date.now() / 1000);
     const expSec = Math.floor(new Date(inv.expires_at.endsWith("Z") ? inv.expires_at : inv.expires_at + "Z").getTime() / 1000);
     if (expSec <= nowSec) return c.json({ error: "code expired" }, 401);
-    q.run(db, "UPDATE invitations SET used_at = datetime('now') WHERE code = ?", code);
+    // ★ 邀请码可重复使用：同一码在有效期内可反复登录（JWT 过期/换设备后可重新登录）
+    //   used_at 记录首次使用，last_used_at / use_count 记录活跃度
+    q.run(
+      db,
+      `UPDATE invitations
+         SET used_at      = COALESCE(used_at, datetime('now')),
+             last_used_at = datetime('now'),
+             use_count    = COALESCE(use_count, 0) + 1
+       WHERE code = ?`,
+      code,
+    );
     const exp = nowSec + parseExpiryToSeconds(cfg.jwtExpiresIn);
     const token = await sign({ role: "user", sub: code, exp }, cfg.jwtSecret);
     // 不回完整邀请码，仅回脱敏标识（JWT 已含完整 sub，前端不需要原码）
@@ -157,6 +166,15 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
 
     // 域名白名单校验（活跃域名表）
     const domain = (req.domain ?? cfg.allowedDomains[0]).trim().toLowerCase();
+    // ★ 防御兜底：即使启动时同步未生效（如老库/手工改库），
+    //   只要域名在 ALLOWED_DOMAINS 中就自动补进 domains 表，避免"配置好了却创建失败"
+    if (cfg.allowedDomains.includes(domain)) {
+      q.run(
+        db,
+        "INSERT INTO domains (domain, is_active, mx_synced) VALUES (?, 1, 1) ON CONFLICT(domain) DO UPDATE SET is_active = 1",
+        domain,
+      );
+    }
     const allowed = q.get<{ domain: string }>(db, "SELECT domain FROM domains WHERE domain = ? AND is_active = 1", domain);
     if (!allowed) {
       return c.json({ error: "invalid domain", allowed_domains: cfg.allowedDomains }, 400);
@@ -365,8 +383,15 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
   admin.use("*", requireAdmin);
 
   admin.get("/domains", (c) => {
-    const rows = q.all(db, "SELECT id, domain, is_active, mx_synced, created_at FROM domains ORDER BY created_at DESC");
-    return c.json({ domains: rows });
+    const rows = q.all<{ id: number; domain: string; is_active: number; mx_synced: number; created_at: string }>(
+      db, "SELECT id, domain, is_active, mx_synced, created_at FROM domains ORDER BY created_at DESC",
+    );
+    // 标注哪些域名来自 ALLOWED_DOMAINS（启动时自动同步，无需手动添加，重启会重建）
+    const envDomains = new Set(cfg.allowedDomains);
+    return c.json({
+      domains: rows.map((d) => ({ ...d, from_env: envDomains.has(d.domain) })),
+      allowed_domains: cfg.allowedDomains,
+    });
   });
 
   admin.post("/domains", async (c) => {
@@ -458,16 +483,23 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
   admin.get("/invitations", (c) => {
     const status = (c.req.query("status") ?? "all").toLowerCase();
     let rows: any[];
+    const SELECT_INV = "SELECT code, note, used_at, last_used_at, use_count, expires_at, created_at FROM invitations";
     if (status === "unused") {
-      rows = q.all(db, "SELECT code, note, used_at, expires_at, created_at FROM invitations WHERE used_at IS NULL AND expires_at > datetime('now') ORDER BY created_at DESC");
+      rows = q.all(db, `${SELECT_INV} WHERE used_at IS NULL AND expires_at > datetime('now') ORDER BY created_at DESC`);
     } else if (status === "used") {
-      rows = q.all(db, "SELECT code, note, used_at, expires_at, created_at FROM invitations WHERE used_at IS NOT NULL ORDER BY used_at DESC");
+      rows = q.all(db, `${SELECT_INV} WHERE used_at IS NOT NULL ORDER BY last_used_at DESC`);
     } else if (status === "expired") {
-      rows = q.all(db, "SELECT code, note, used_at, expires_at, created_at FROM invitations WHERE used_at IS NULL AND expires_at <= datetime('now') ORDER BY expires_at DESC");
+      rows = q.all(db, `${SELECT_INV} WHERE expires_at <= datetime('now') ORDER BY expires_at DESC`);
     } else {
-      rows = q.all(db, "SELECT code, note, used_at, expires_at, created_at FROM invitations ORDER BY created_at DESC");
+      rows = q.all(db, `${SELECT_INV} ORDER BY created_at DESC`);
     }
-    return c.json({ invitations: rows });
+    // 附带每个码的活跃状态，前端无需自行判断过期
+    const now = Date.now();
+    const enriched = rows.map((r) => {
+      const exp = new Date(r.expires_at.endsWith("Z") ? r.expires_at : r.expires_at + "Z").getTime();
+      return { ...r, expired: exp <= now, status: exp <= now ? "expired" : r.used_at ? "used" : "unused" };
+    });
+    return c.json({ invitations: enriched });
   });
 
   // 撤销（删除未使用的邀请码）

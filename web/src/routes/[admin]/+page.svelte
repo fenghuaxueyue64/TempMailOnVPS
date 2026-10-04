@@ -259,10 +259,11 @@
     toast(`已复制 ${createdCodes.length} 个邀请码`, 'success');
   }
 
+  // 邀请码可重复使用：状态由服务端判定（未启用 / 已启用 / 已过期）
   function invStatus(inv: any): 'unused' | 'used' | 'expired' {
-    if (inv.used_at) return 'used';
-    if (new Date(inv.expires_at.endsWith('Z') ? inv.expires_at : inv.expires_at + 'Z').getTime() <= Date.now()) return 'expired';
-    return 'unused';
+    if (inv.status) return inv.status;
+    if (inv.expired) return 'expired';
+    return inv.used_at ? 'used' : 'unused';
   }
 </script>
 
@@ -449,11 +450,11 @@
                     {/if}
                     <div class="text-xs text-outline mt-1">
                       创建：{fmtFull(inv.created_at)} · 过期：{fmtFull(inv.expires_at)}
-                      {#if inv.used_at} · 使用：{fmtFull(inv.used_at)}{/if}
+                      {#if inv.used_at} · 已登录 {inv.use_count ?? 1} 次{/if}
                     </div>
                   </div>
                   <span class="chip {st === 'unused' ? 'chip-success' : st === 'used' ? 'chip-primary' : 'chip-error'} text-[10px] h-5 shrink-0">
-                    {st === 'unused' ? '未使用' : st === 'used' ? '已使用' : '已过期'}
+                    {st === 'unused' ? '未启用' : st === 'used' ? '已启用' : '已过期'}
                   </span>
                   {#if st === 'unused'}
                     <button class="btn btn-text btn-sm shrink-0" onclick={() => navigator.clipboard.writeText(inv.code).then(() => toast('已复制', 'success'))} title="复制">
@@ -490,7 +491,7 @@
           <form class="flex gap-1.5" onsubmit={(e) => { e.preventDefault(); void addDomain(); }}>
             <input
               class="input h-10 flex-1 text-base"
-              placeholder="example.com"
+              placeholder="额外域名（可选）"
               bind:value={newDomain}
               disabled={addingDomain}
             >
@@ -502,6 +503,9 @@
               {/if}
             </button>
           </form>
+          <p class="text-[11px] text-outline mt-1.5 leading-relaxed">
+            环境变量 ALLOWED_DOMAINS 中的域名会在启动时自动同步（下方标「环境变量」），<b>无需手动添加</b>。此处仅用于额外增加域名。
+          </p>
         </div>
 
         <div class="flex-1 overflow-y-auto scroll-area px-2 pb-2">
@@ -530,13 +534,18 @@
                 <div class="avatar {domainColor(d.domain)}">{domainInitial(d.domain)}</div>
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-surface-on truncate">{esc(d.domain)}</div>
-                  <div class="flex gap-1 mt-1">
+                  <div class="flex gap-1 mt-1 flex-wrap">
                     <span class="chip {d.is_active ? 'chip-success' : 'chip-neutral'} text-[10px] h-5">
                       {d.is_active ? '活跃' : '停用'}
                     </span>
                     <span class="chip {d.mx_synced ? 'chip-primary' : 'chip-error'} text-[10px] h-5">
                       MX {d.mx_synced ? '已配' : '未配'}
                     </span>
+                    {#if d.from_env}
+                      <span class="chip chip-neutral text-[10px] h-5" title="来自环境变量 ALLOWED_DOMAINS，启动时自动同步">
+                        环境变量
+                      </span>
+                    {/if}
                   </div>
                 </div>
               </button>
