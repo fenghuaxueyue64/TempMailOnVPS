@@ -347,10 +347,6 @@
           <Icon name="arrow_back" size={18} /> 邮箱
         </button>
       {/if}
-      <a href="/admin" class="btn btn-text btn-sm" title="管理后台">
-        <Icon name="admin_panel_settings" size={18} />
-        <span class="hidden sm:inline">管理</span>
-      </a>
       {#if u.userIdMasked}
         <span class="chip chip-neutral hidden sm:inline-flex" title={u.userIdMasked}>
           <Icon name="vpn_key" size={13} /> {u.userIdMasked}

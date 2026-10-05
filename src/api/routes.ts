@@ -516,6 +516,32 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
   // ---- Web UI（SvelteKit build 产物，同端口托管；dev 模式用 vite :5173 + proxy） ----
   if (existsSync("./web/build")) {
     app.get("/favicon.svg", serveStatic({ path: "./web/build/favicon.svg" }));
+
+    /**
+     * 渲染 index.html 并注入管理入口占位符。
+     * ★ 安全：仅当本次请求就是管理入口时才注入真实路径，其余一律注入空串。
+     *   否则任何访客查看 index.html 源码都能拿到后台地址，随机入口形同虚设。
+     */
+    const renderIndex = async (adminPath: string): Promise<Response> => {
+      const html = await Bun.file("./web/build/index.html").text();
+      return new Response(html.replaceAll("{{ADMIN_PATH}}", adminPath), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          // 入口页不缓存，避免真实路径被中间缓存/CDN 留存
+          "Cache-Control": adminPath ? "no-store" : "no-cache",
+        },
+      });
+    };
+
+    // ★ 必须在 serveStatic 之前接管 / 与 /index.html：
+    //   否则 serveStatic 会直接吐出原始 index.html，占位符不会被替换
+    const adminEntry = `/${cfg.adminPath.toLowerCase()}`;
+    for (const p of ["/", "/index.html"]) {
+      app.get(p, () => renderIndex(""));
+    }
+    // 管理入口本身：注入真实路径
+    app.get(adminEntry, () => renderIndex(cfg.adminPath));
+
     app.use("/*", serveStatic({ root: "./web/build" }));
 
     // 旧的 /admin 入口一律 404（避免被字典扫描命中）
@@ -523,16 +549,13 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
     app.get("/admin/*", (c) => c.json({ error: "not found" }, 404));
 
     // SPA fallback：API 前缀返回 JSON 404，其余 GET 返回 index.html 交给前端路由
-    // 并把 {{ADMIN_PATH}} 占位符替换为真实管理入口（每个部署各不相同）
     app.get("*", async (c) => {
       if (c.req.path.startsWith("/api/")) {
         return c.json({ error: "not found" }, 404);
       }
-      const html = await Bun.file("./web/build/index.html").text();
-      const injected = html.replaceAll("{{ADMIN_PATH}}", cfg.adminPath);
-      return new Response(injected, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      const reqPath = c.req.path.replace(/\/+$/, "").toLowerCase();
+      const isAdminEntry = reqPath === adminEntry;
+      return renderIndex(isAdminEntry ? cfg.adminPath : "");
     });
   }
 

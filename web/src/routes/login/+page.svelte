@@ -9,10 +9,6 @@
   let code = $state('');
   let loading = $state(false);
 
-  // 管理入口由后端注入，未配置则不展示入口
-  const adminPath: string =
-    (typeof window !== 'undefined' && (window as any).__ADMIN_PATH__) || '';
-
   onMount(() => {
     // 已登录直接跳主页
     if (loadUser()) goto('/');
@@ -86,16 +82,8 @@
 
     <p class="text-xs text-outline text-center mt-6 leading-relaxed">
       没有邀请码？联系管理员索取。<br>
-      邀请码一次性使用，登录后 JWT 在浏览器本地保存 7 天。
+      邀请码在有效期内可重复使用，登录后 JWT 在浏览器本地保存 7 天。
     </p>
-
-    <div class="text-center mt-4">
-      {#if adminPath}
-        <a href="/{adminPath}" class="btn btn-text btn-sm">
-          <Icon name="admin_panel_settings" size={16} /> 管理后台
-        </a>
-      {/if}
-    </div>
   </div>
 </div>
 
