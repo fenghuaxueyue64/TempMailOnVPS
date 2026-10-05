@@ -58,7 +58,7 @@ export interface Invitation {
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
-    super(message);
+    super(status ? `(${status}) ${message}` : message);
   }
 }
 

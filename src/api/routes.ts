@@ -79,11 +79,17 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
     if (origin) {
       try {
         const u = new URL(origin);
-        const host = c.req.header("Host") ?? "";
+        // 反代场景优先信任 X-Forwarded-Host，否则用 Host
+        const rawHost = c.req.header("X-Forwarded-Host") ?? c.req.header("Host") ?? "";
+        // ★ 只比较主机名、忽略端口：
+        //   浏览器对 80/443 等默认端口不会把端口写进 Origin（URL.host 也会剥掉），
+        //   而 Host 头可能带端口（如 tmp.io:443）。此前用全等比较会把正常请求判成跨站 403。
+        const hostName = rawHost.split(":")[0].trim().toLowerCase();
         // 允许同 host（标准反向代理场景），或本地开发 origin
-        const isSameHost = u.host === host;
+        const isSameHost = hostName !== "" && u.hostname.toLowerCase() === hostName;
         const isDev = cfg.nodeEnv !== "production" && (u.hostname === "localhost" || u.hostname === "127.0.0.1");
         if (!isSameHost && !isDev) {
+          console.warn(`[csrf] blocked origin=${origin} host=${rawHost} (hostName=${hostName})`);
           return c.json({ error: "origin not allowed" }, 403);
         }
       } catch {
@@ -166,6 +172,8 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
 
     // 域名白名单校验（活跃域名表）
     const domain = (req.domain ?? cfg.allowedDomains[0]).trim().toLowerCase();
+    // 诊断日志：生产环境排查创建失败用（docker compose logs app）
+    console.log(`[mb] create user=${String(userId).slice(0, 8)}… domain=${domain} allowed=[${cfg.allowedDomains.join(",")}]`);
     // ★ 防御兜底：即使启动时同步未生效（如老库/手工改库），
     //   只要域名在 ALLOWED_DOMAINS 中就自动补进 domains 表，避免"配置好了却创建失败"
     if (cfg.allowedDomains.includes(domain)) {
@@ -177,6 +185,7 @@ export function createApiApp(cfg: Config, db: DB): Hono<Env> {
     }
     const allowed = q.get<{ domain: string }>(db, "SELECT domain FROM domains WHERE domain = ? AND is_active = 1", domain);
     if (!allowed) {
+      console.error(`[mb] create failed: domain not active in db (domain=${domain})`);
       return c.json({ error: "invalid domain", allowed_domains: cfg.allowedDomains }, 400);
     }
 
