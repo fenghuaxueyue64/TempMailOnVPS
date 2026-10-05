@@ -33,7 +33,9 @@
   let syncingDomain = $state<string | null>(null);
   let verifyingDomain = $state<string | null>(null);
 
-  const admin = $adminStore;
+  // ★ 必须用 $derived：Svelte 5 中 `const admin = $adminStore` 只在初始化时求值一次，
+  //   之后 adminStore 更新不会同步，域名/邀请码列表会永远显示为空。
+  const admin = $derived($adminStore);
   const domains = $derived(admin.domains);
 
   // 域名头像配色

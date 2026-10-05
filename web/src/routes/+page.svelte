@@ -6,8 +6,9 @@
   import Icon from '$lib/components/Icon.svelte';
   import Toasts from '$lib/components/Toasts.svelte';
 
-  // 用户登录态
-  const u = $userStore;
+  // ★ 必须用 $derived：Svelte 5 中 `const u = $userStore` 只在初始化时求值一次，
+  //   后续 store 更新不会同步，导致 u.jwt 恒为 null —— 创建/加载/续期全部静默失效。
+  const u = $derived($userStore);
   let bootstrapped = $state(false);
 
   // 视图层级：邮箱列表 → 邮箱详情（收件箱 → 邮件详情）
@@ -169,7 +170,10 @@
   }
 
   async function createMailbox() {
-    if (!u.jwt) return;
+    if (!u.jwt) {
+      toast('登录状态已失效，请重新登录', 'error');
+      return;
+    }
     creating = true;
     try {
       const mb = await api.createMailbox(u.jwt, newName.trim() ? { name: newName.trim() } : {});
